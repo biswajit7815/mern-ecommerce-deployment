@@ -1,8 +1,8 @@
 pipeline {
 
     agent any
-    
-    tools{
+
+    tools {
         nodejs 'node18'
     }
 
@@ -47,6 +47,7 @@ pipeline {
         // Install Dependencies
         stage('Install Dependencies') {
             parallel {
+
                 stage('Backend Install') {
                     steps {
                         dir('backend') {
@@ -54,6 +55,7 @@ pipeline {
                         }
                     }
                 }
+
                 stage('Frontend Install') {
                     steps {
                         dir('frontend') {
@@ -70,24 +72,26 @@ pipeline {
 
                 stage('OWASP Dependency Check') {
                     steps {
-                        withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-                            dependencyCheck(
-                                additionalArguments: """
-                                    --scan backend/
-                                    --scan frontend/
-                                    --format HTML
-                                    --format XML
-                                    --out reports/owasp/
-                                    --disableAssembly
-                                    --disableYarnAudit
-                                    --nvdApiKey ${NVD_API_KEY}
-                                """,
-                                odcInstallation: 'DP-Check'
-                            )
-                            dependencyCheckPublisher(
-                                pattern: 'reports/owasp/dependency-check-report.xml'
-                            )
-                        }
+                        sh 'mkdir -p reports/owasp'
+
+                        dependencyCheck(
+                            additionalArguments: '''
+                                --scan backend/
+                                --scan frontend/
+                                --format HTML
+                                --format XML
+                                --out reports/owasp/
+                                --disableAssembly
+                                --disableYarnAudit
+                                --disableNodeAudit
+                                --prettyPrint
+                            ''',
+                            odcInstallation: 'DP-Check'
+                        )
+
+                        dependencyCheckPublisher(
+                            pattern: 'reports/owasp/dependency-check-report.xml'
+                        )
                     }
                 }
 
@@ -114,7 +118,11 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonar-server') {
-                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+
+                    withCredentials([
+                        string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')
+                    ]) {
+
                         sh """
                             ${tool 'sonar-scanner'}/bin/sonar-scanner \
                                 -Dsonar.projectKey=${SONAR_PROJECT} \
@@ -132,7 +140,7 @@ pipeline {
         // Quality Gate
         stage('Quality Gate') {
             steps {
-                // abortPipeline: false → quality gate fail hone par pipeline nahi rukti (Tests likhne ke baad true kar sakte ho)
+                // abortPipeline: false → quality gate fail hone par pipeline nahi rukti
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate(abortPipeline: false)
                 }
@@ -200,11 +208,15 @@ pipeline {
         // Push to DockerHub
         stage('Push to DockerHub') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-hub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'docker-hub-creds',
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )
+                ]) {
+
                     sh """
                         echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
 
@@ -223,21 +235,26 @@ pipeline {
         // Deploy
         stage('Deploy') {
             steps {
-                // Jenkins me ye secret text credentials banao: MONGO_URI | SECRET_KEY | APP_EMAIL | APP_EMAIL_PASSWORD
+
+                // Jenkins me ye secret text credentials banao:
+                // MONGO_URI | SECRET_KEY | APP_EMAIL | APP_EMAIL_PASSWORD
+
                 withCredentials([
-                    string(credentialsId: 'MONGO_URI',          variable: 'MONGO_URI'),
-                    string(credentialsId: 'SECRET_KEY',         variable: 'SECRET_KEY'),
-                    string(credentialsId: 'APP_EMAIL',          variable: 'APP_EMAIL'),
+                    string(credentialsId: 'MONGO_URI', variable: 'MONGO_URI'),
+                    string(credentialsId: 'SECRET_KEY', variable: 'SECRET_KEY'),
+                    string(credentialsId: 'APP_EMAIL', variable: 'APP_EMAIL'),
                     string(credentialsId: 'APP_EMAIL_PASSWORD', variable: 'APP_EMAIL_PASSWORD')
                 ]) {
+
                     sh """
                         # Purane containers band karo
                         docker stop ${BACKEND_CONTAINER}  2>/dev/null || true
                         docker stop ${FRONTEND_CONTAINER} 2>/dev/null || true
-                        docker rm   ${BACKEND_CONTAINER}  2>/dev/null || true
-                        docker rm   ${FRONTEND_CONTAINER} 2>/dev/null || true
 
-                        # Shared network banao (agar pehle se hai to ignore)
+                        docker rm ${BACKEND_CONTAINER}  2>/dev/null || true
+                        docker rm ${FRONTEND_CONTAINER} 2>/dev/null || true
+
+                        # Shared network banao
                         docker network create mern-network 2>/dev/null || true
 
                         # Backend container start karo
@@ -259,7 +276,7 @@ pipeline {
                             -e NODE_ENV="production" \
                             ${BACKEND_IMAGE}:${IMAGE_TAG}
 
-                        # Frontend container start karo (Nginx port 80)
+                        # Frontend container start karo
                         docker run -d \
                             --name ${FRONTEND_CONTAINER} \
                             --network mern-network \
@@ -271,7 +288,8 @@ pipeline {
                         sleep 15
 
                         # Status check karo
-                        docker ps --filter "name=${BACKEND_CONTAINER}"  --format "{{.Names}} → {{.Status}}"
+                        docker ps --filter "name=${BACKEND_CONTAINER}" --format "{{.Names}} → {{.Status}}"
+
                         docker ps --filter "name=${FRONTEND_CONTAINER}" --format "{{.Names}} → {{.Status}}"
 
                         # Health checks
@@ -292,11 +310,12 @@ pipeline {
         // Cleanup Old Images
         stage('Cleanup Old Images') {
             steps {
+
                 sh """
                     # Dangling images hata do
                     docker image prune -f
 
-                    # Purane backend tags hata do (current aur latest rakho)
+                    # Purane backend tags hata do
                     docker images ${BACKEND_IMAGE} --format "{{.Tag}}" \
                         | grep -v "latest" \
                         | grep -v "${IMAGE_TAG}" \
@@ -316,7 +335,8 @@ pipeline {
     post {
 
         always {
-            // Reports archive karo — build page pe download link milega
+
+            // Reports archive karo
             archiveArtifacts(
                 artifacts: 'reports/trivy/*.txt, reports/owasp/dependency-check-report.html',
                 allowEmptyArchive: true,
@@ -340,6 +360,7 @@ pipeline {
 
         failure {
             echo "Build #${BUILD_NUMBER} failed. Console output check karo: ${BUILD_URL}console"
+
             // Email notification ke liye uncomment karo:
             // mail to: 'your@email.com',
             //      subject: "Build #${BUILD_NUMBER} Failed — mern-ecommerce",
@@ -347,6 +368,7 @@ pipeline {
         }
 
         cleanup {
+
             // Success ke baad workspace clean karo
             cleanWs(
                 cleanWhenSuccess: true,
