@@ -57,7 +57,7 @@ pipeline {
                 stage('Frontend Install') {
                     steps {
                         dir('frontend') {
-                            sh 'npm ci --prefer-offline || npm install'
+                            sh 'npm ci --prefer-offline --legacy-peer-deps || npm install --legacy-peer-deps'
                         }
                     }
                 }
