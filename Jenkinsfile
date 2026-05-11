@@ -1,6 +1,10 @@
 pipeline {
 
     agent any
+    
+    tools{
+        nodejs 'node18'
+    }
 
     environment {
         DOCKERHUB_USER     = 'biswajit7815'
