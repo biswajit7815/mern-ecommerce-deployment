@@ -1,0 +1,35 @@
+# Dependencies (Docker mein fresh install hogi)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Environment files (Secrets kabhi image mein nahi jayenge)
+.env
+.env.*
+.env.local
+.env.production
+
+# Git files
+.git
+.gitignore
+
+# Logs
+logs
+*.log
+
+# Testing files
+coverage
+.nyc_output
+
+# Editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Seed data (Production mein zaroori nahi)
+seed/
