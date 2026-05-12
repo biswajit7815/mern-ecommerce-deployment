@@ -17,7 +17,7 @@ pipeline {
         BACKEND_CONTAINER  = 'mern-backend'
         FRONTEND_CONTAINER = 'mern-frontend'
         BACKEND_PORT       = '8000'
-        EC2_PUBLIC_IP      = "${env.EC2_PUBLIC_IP ?: '13.126.203.252'}"
+        EC2_PUBLIC_IP      = "${env.EC2_PUBLIC_IP ?: 13.126.203.252}"
     }
 
     triggers {
