@@ -141,7 +141,7 @@ pipeline {
         stage('Quality Gate') {
             steps {
                 // abortPipeline: false → quality gate fail hone par pipeline nahi rukti
-                timeout(time: 5, unit: 'MINUTES') {
+                timeout(time: 15, unit: 'MINUTES') {
                     waitForQualityGate(abortPipeline: false)
                 }
             }
