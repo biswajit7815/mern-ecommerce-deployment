@@ -235,13 +235,13 @@ pipeline {
             steps {
 
                 // Jenkins me ye secret text credentials banao:
-                // MONGO_URI | SECRET_KEY | APP_EMAIL | APP_EMAIL_PASSWORD
+                // MONGO_URI | SECRET_KEY | EMAIL | EMAIL_PASSWORD
 
                 withCredentials([
                     string(credentialsId: 'MONGO_URI', variable: 'MONGO_URI'),
                     string(credentialsId: 'SECRET_KEY', variable: 'SECRET_KEY'),
-                    string(credentialsId: 'APP_EMAIL', variable: 'APP_EMAIL'),
-                    string(credentialsId: 'APP_EMAIL_PASSWORD', variable: 'APP_EMAIL_PASSWORD')
+                    string(credentialsId: 'EMAIL', variable: 'EMAIL'),
+                    string(credentialsId: 'EMAIL_PASSWORD', variable: 'EMAIL_PASSWORD')
                 ]) {
 
                     sh """
@@ -264,8 +264,8 @@ pipeline {
                             -e MONGO_URI="${MONGO_URI}" \
                             -e ORIGIN="http://${EC2_PUBLIC_IP}" \
                             -e SECRET_KEY="${SECRET_KEY}" \
-                            -e EMAIL="${APP_EMAIL}" \
-                            -e PASSWORD="${APP_EMAIL_PASSWORD}" \
+                            -e EMAIL="${EMAIL}" \
+                            -e PASSWORD="${EMAIL_PASSWORD}" \
                             -e LOGIN_TOKEN_EXPIRATION="30d" \
                             -e OTP_EXPIRATION_TIME="120000" \
                             -e PASSWORD_RESET_TOKEN_EXPIRATION="2m" \
