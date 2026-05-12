@@ -18,7 +18,7 @@ pipeline {
         BACKEND_CONTAINER  = 'mern-backend'
         FRONTEND_CONTAINER = 'mern-frontend'
         BACKEND_PORT       = '8000'
-        EC2_PUBLIC_IP      = "${env.EC2_PUBLIC_IP ?: 13.126.203.252}"
+        EC2_PUBLIC_IP      = "${env.EC2_PUBLIC_IP ?: '13.126.203.252'}"
     }
 
     triggers {
@@ -92,7 +92,7 @@ pipeline {
                         )
 
                         dependencyCheckPublisher(
-                            pattern: 'reports/owasp/dependency-check-report.xml'
+                            pattern: 'reports/owasp/dependency-check-report.xml',
                             failedTotalCritical:    10,
                             unstableTotalCritical:  5
                         )
