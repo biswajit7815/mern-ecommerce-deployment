@@ -12,11 +12,12 @@ pipeline {
         FRONTEND_IMAGE     = "${DOCKERHUB_USER}/mern-frontend"
         IMAGE_TAG          = "${BUILD_NUMBER}"
         SONAR_PROJECT      = 'mern-ecommerce'
+        SCANNER_HOME       = tool 'sonar-scanner'
         TRIVY_CACHE        = '/var/lib/trivy'
         BACKEND_CONTAINER  = 'mern-backend'
         FRONTEND_CONTAINER = 'mern-frontend'
         BACKEND_PORT       = '8000'
-        EC2_PUBLIC_IP      = "${env.EC2_PUBLIC_IP ?: 'YOUR_EC2_PUBLIC_IP'}"
+        EC2_PUBLIC_IP      = "${env.EC2_PUBLIC_IP ?: '13.126.203.252'}"
     }
 
     triggers {
@@ -91,6 +92,8 @@ pipeline {
 
                         dependencyCheckPublisher(
                             pattern: 'reports/owasp/dependency-check-report.xml'
+                            failedTotalCritical:    10,
+                            unstableTotalCritical:  5
                         )
                     }
                 }
@@ -118,21 +121,15 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonar-server') {
-
-                    withCredentials([
-                        string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')
-                    ]) {
-
-                        sh """
-                            ${tool 'sonar-scanner'}/bin/sonar-scanner \
-                                -Dsonar.projectKey=${SONAR_PROJECT} \
-                                -Dsonar.projectName='MERN Ecommerce' \
-                                -Dsonar.sources=backend/,frontend/src/ \
-                                -Dsonar.exclusions=*/node_modules/,/build/,/dist/,/.test.js \
-                                -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info \
-                                -Dsonar.login=${SONAR_TOKEN}
-                        """
-                    }
+                    sh """
+                        echo "--- SonarQube Scanning ---"
+                        ${SCANNER_HOME}/bin/sonar-scanner \
+                            -Dsonar.projectKey=${SONAR_PROJECT} \
+                            -Dsonar.projectName='MERN Ecommerce' \
+                            -Dsonar.sources=backend/,frontend/src/ \
+                            -Dsonar.exclusions=**/node_modules/**,**/build/**,**/dist/**,**/*.test.js \
+                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                    """
                 }
             }
         }
@@ -141,7 +138,7 @@ pipeline {
         stage('Quality Gate') {
             steps {
                 // abortPipeline: false → quality gate fail hone par pipeline nahi rukti
-                timeout(time: 15, unit: 'MINUTES') {
+                timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate(abortPipeline: false)
                 }
             }
