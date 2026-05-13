@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  mongo:
+    image: mongo:6.0
+    container_name: ecommerce_mongo
+    restart: unless-stopped
+    # 1. Resource Limits (Security & Stability)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - ecommerce_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 20s # Thoda fast checking
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ecommerce_backend
+    restart: unless-stopped
+    # 2. Logging (Debugging ke liye)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    env_file:
+      - ./backend/.env
+    # PRODUCTION TIP: Avoid binding whole .env as volume if already in env_file
+    expose:
+      - "8000" # Ensure this matches your server.js port
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - ecommerce_network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - REACT_APP_BASE_URL=${REACT_APP_BASE_URL}
+    env_file:
+      - ./frontend/.env
+    container_name: ecommerce_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy # Wait for API to be ready
+    networks:
+      - ecommerce_network
+
+
+volumes:
+  mongo_data:
+    name: ecommerce_mongo_data
+
+networks:
+  ecommerce_network:
+    name: ecommerce_network
+    driver: bridge

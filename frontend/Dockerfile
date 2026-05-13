@@ -13,7 +13,7 @@ RUN npm ci --legacy-peer-deps
 COPY . .
 
 # Build time environment variable (Jenkins pipeline mein EC2 IP se override hoga)
-ARG REACT_APP_BASE_URL=http://localhost:8000
+ARG REACT_APP_BASE_URL
 ENV REACT_APP_BASE_URL=$REACT_APP_BASE_URL
 
 # Production build banao (Output: /app/build/)
