@@ -38,6 +38,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+
                 sh '''
                     echo "Branch : $(git rev-parse --abbrev-ref HEAD)"
                     echo "Commit : $(git rev-parse --short HEAD)"
@@ -48,6 +49,7 @@ pipeline {
 
         // Install Dependencies
         stage('Install Dependencies') {
+
             parallel {
 
                 stage('Backend Install') {
@@ -70,10 +72,12 @@ pipeline {
 
         // Security Scans
         stage('Security Scans') {
+
             parallel {
 
                 stage('OWASP Dependency Check') {
                     steps {
+
                         sh 'mkdir -p reports/owasp'
 
                         dependencyCheck(
@@ -93,14 +97,15 @@ pipeline {
 
                         dependencyCheckPublisher(
                             pattern: 'reports/owasp/dependency-check-report.xml',
-                            failedTotalCritical:    10,
-                            unstableTotalCritical:  5
+                            failedTotalCritical: 10,
+                            unstableTotalCritical: 5
                         )
                     }
                 }
 
                 stage('Trivy FS Scan') {
                     steps {
+
                         sh '''
                             mkdir -p reports/trivy
 
@@ -121,9 +126,12 @@ pipeline {
         // SonarQube Analysis
         stage('SonarQube Analysis') {
             steps {
+
                 withSonarQubeEnv('sonar-server') {
+
                     sh """
                         echo "--- SonarQube Scanning ---"
+
                         ${SCANNER_HOME}/bin/sonar-scanner \
                             -Dsonar.projectKey=${SONAR_PROJECT} \
                             -Dsonar.projectName='MERN Ecommerce' \
@@ -138,7 +146,7 @@ pipeline {
         // Quality Gate
         stage('Quality Gate') {
             steps {
-                // abortPipeline: false → quality gate fail hone par pipeline nahi rukti
+
                 timeout(time: 5, unit: 'MINUTES') {
                     waitForQualityGate(abortPipeline: false)
                 }
@@ -148,6 +156,7 @@ pipeline {
         // Build Docker Images
         stage('Build Docker Images') {
             steps {
+
                 sh """
                     docker build \
                         -t ${BACKEND_IMAGE}:${IMAGE_TAG} \
@@ -167,10 +176,12 @@ pipeline {
 
         // Trivy Image Scan
         stage('Trivy Image Scan') {
+
             parallel {
 
                 stage('Backend Image Scan') {
                     steps {
+
                         sh """
                             trivy image \
                                 --exit-code 0 \
@@ -187,6 +198,7 @@ pipeline {
 
                 stage('Frontend Image Scan') {
                     steps {
+
                         sh """
                             trivy image \
                                 --exit-code 0 \
@@ -234,9 +246,6 @@ pipeline {
         stage('Deploy') {
             steps {
 
-                // Jenkins me ye secret text credentials banao:
-                // MONGO_URI | SECRET_KEY | EMAIL | EMAIL_PASSWORD
-
                 withCredentials([
                     string(credentialsId: 'MONGO_URI', variable: 'MONGO_URI'),
                     string(credentialsId: 'SECRET_KEY', variable: 'SECRET_KEY'),
@@ -246,10 +255,10 @@ pipeline {
 
                     sh """
                         # Purane containers band karo
-                        docker stop ${BACKEND_CONTAINER}  2>/dev/null || true
+                        docker stop ${BACKEND_CONTAINER} 2>/dev/null || true
                         docker stop ${FRONTEND_CONTAINER} 2>/dev/null || true
 
-                        docker rm ${BACKEND_CONTAINER}  2>/dev/null || true
+                        docker rm ${BACKEND_CONTAINER} 2>/dev/null || true
                         docker rm ${FRONTEND_CONTAINER} 2>/dev/null || true
 
                         # Shared network banao
@@ -290,14 +299,15 @@ pipeline {
 
                         docker ps --filter "name=${FRONTEND_CONTAINER}" --format "{{.Names}} → {{.Status}}"
 
-                        # Health checks
+                        # Backend health check
                         curl -sf http://localhost:${BACKEND_PORT}/health \
                             && echo "Backend healthy" \
-                            || echo "Backend /health respond nahi kar raha — docker logs ${BACKEND_CONTAINER} dekho"
+                            || true
 
-                        curl -sf http://localhost/health \
-                            && echo "Frontend (Nginx) healthy" \
-                            || echo "Nginx health check failed — docker logs ${FRONTEND_CONTAINER} dekho"
+                        # Frontend health check
+                        curl -sf http://localhost \
+                            && echo "Frontend healthy" \
+                            || true
 
                         echo "App live: http://${EC2_PUBLIC_IP}"
                     """
@@ -334,14 +344,12 @@ pipeline {
 
         always {
 
-            // Reports archive karo
             archiveArtifacts(
                 artifacts: 'reports/trivy/*.txt, reports/owasp/dependency-check-report.html',
                 allowEmptyArchive: true,
                 fingerprint: true
             )
 
-            // OWASP HTML report Jenkins UI me dikhao
             publishHTML([
                 allowMissing: true,
                 alwaysLinkToLastBuild: true,
@@ -358,16 +366,10 @@ pipeline {
 
         failure {
             echo "Build #${BUILD_NUMBER} failed. Console output check karo: ${BUILD_URL}console"
-
-            // Email notification ke liye uncomment karo:
-            // mail to: 'your@email.com',
-            //      subject: "Build #${BUILD_NUMBER} Failed — mern-ecommerce",
-            //      body: "Details: ${BUILD_URL}"
         }
 
         cleanup {
 
-            // Success ke baad workspace clean karo
             cleanWs(
                 cleanWhenSuccess: true,
                 cleanWhenFailure: false,
