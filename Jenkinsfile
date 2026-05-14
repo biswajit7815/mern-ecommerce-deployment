@@ -14,7 +14,9 @@ pipeline {
         FRONTEND_IMAGE     = "${DOCKERHUB_USER}/mern-frontend"
 
         IMAGE_TAG          = "${BUILD_NUMBER}"
-
+        SONAR_PROJECT      = 'mern-ecommerce'
+        SCANNER_HOME       = tool 'sonar-scanner'
+        TRIVY_CACHE        = '/var/lib/trivy'
         BACKEND_CONTAINER  = 'mern-backend'
         FRONTEND_CONTAINER = 'mern-frontend'
 
@@ -74,6 +76,59 @@ pipeline {
                 }
             }
         }
+        // Security Scans
+        stage('Security Scans') {
+
+            parallel {
+
+                stage('OWASP Dependency Check') {
+                    steps {
+
+                        sh 'mkdir -p reports/owasp'
+
+                        dependencyCheck(
+                            additionalArguments: '''
+                                --scan backend/
+                                --scan frontend/
+                                --format HTML
+                                --format XML
+                                --out reports/owasp/
+                                --disableAssembly
+                                --disableYarnAudit
+                                --disableNodeAudit
+                                --prettyPrint
+                            ''',
+                            odcInstallation: 'DP-Check'
+                        )
+
+                        dependencyCheckPublisher(
+                            pattern: 'reports/owasp/dependency-check-report.xml',
+                            failedTotalCritical: 10,
+                            unstableTotalCritical: 5
+                        )
+                    }
+                }
+
+                stage('Trivy FS Scan') {
+                    steps {
+
+                        sh '''
+                            mkdir -p reports/trivy
+
+                            trivy fs . \
+                                --exit-code 0 \
+                                --severity HIGH,CRITICAL \
+                                --cache-dir ${TRIVY_CACHE} \
+                                --format table \
+                                -o reports/trivy/fs-scan.txt
+
+                            cat reports/trivy/fs-scan.txt
+                        '''
+                    }
+                }
+            }
+        }
+
 
         // Build Docker Images
         stage('Build Docker Images') {
