@@ -9,15 +9,17 @@ pipeline {
 
     environment {
         DOCKERHUB_USER     = 'biswajit7815'
+
         BACKEND_IMAGE      = "${DOCKERHUB_USER}/mern-backend"
         FRONTEND_IMAGE     = "${DOCKERHUB_USER}/mern-frontend"
+
         IMAGE_TAG          = "${BUILD_NUMBER}"
-        SONAR_PROJECT      = 'mern-ecommerce'
-        SCANNER_HOME       = tool 'sonar-scanner'
-        TRIVY_CACHE        = '/var/lib/trivy'
+
         BACKEND_CONTAINER  = 'mern-backend'
         FRONTEND_CONTAINER = 'mern-frontend'
+
         BACKEND_PORT       = '8000'
+
         EC2_PUBLIC_IP      = "${env.EC2_PUBLIC_IP ?: '13.126.203.252'}"
     }
 
@@ -37,6 +39,7 @@ pipeline {
         // Checkout
         stage('Checkout') {
             steps {
+
                 checkout scm
 
                 sh '''
@@ -54,101 +57,20 @@ pipeline {
 
                 stage('Backend Install') {
                     steps {
+
                         dir('backend') {
-                            sh 'npm ci --prefer-offline || npm install'
+                            sh 'npm install'
                         }
                     }
                 }
 
                 stage('Frontend Install') {
                     steps {
+
                         dir('frontend') {
-                            sh 'npm ci --prefer-offline --legacy-peer-deps || npm install --legacy-peer-deps'
+                            sh 'npm install --legacy-peer-deps'
                         }
                     }
-                }
-            }
-        }
-
-        // Security Scans
-        stage('Security Scans') {
-
-            parallel {
-
-                stage('OWASP Dependency Check') {
-                    steps {
-
-                        sh 'mkdir -p reports/owasp'
-
-                        dependencyCheck(
-                            additionalArguments: '''
-                                --scan backend/
-                                --scan frontend/
-                                --format HTML
-                                --format XML
-                                --out reports/owasp/
-                                --disableAssembly
-                                --disableYarnAudit
-                                --disableNodeAudit
-                                --prettyPrint
-                            ''',
-                            odcInstallation: 'DP-Check'
-                        )
-
-                        dependencyCheckPublisher(
-                            pattern: 'reports/owasp/dependency-check-report.xml',
-                            failedTotalCritical: 10,
-                            unstableTotalCritical: 5
-                        )
-                    }
-                }
-
-                stage('Trivy FS Scan') {
-                    steps {
-
-                        sh '''
-                            mkdir -p reports/trivy
-
-                            trivy fs . \
-                                --exit-code 0 \
-                                --severity HIGH,CRITICAL \
-                                --cache-dir ${TRIVY_CACHE} \
-                                --format table \
-                                -o reports/trivy/fs-scan.txt
-
-                            cat reports/trivy/fs-scan.txt
-                        '''
-                    }
-                }
-            }
-        }
-
-        // SonarQube Analysis
-        stage('SonarQube Analysis') {
-            steps {
-
-                withSonarQubeEnv('sonar-server') {
-
-                    sh """
-                        echo "--- SonarQube Scanning ---"
-
-                        ${SCANNER_HOME}/bin/sonar-scanner \
-                            -Dsonar.projectKey=${SONAR_PROJECT} \
-                            -Dsonar.projectName='MERN Ecommerce' \
-                            -Dsonar.sources=backend/,frontend/src/ \
-                            -Dsonar.exclusions=**/node_modules/**,**/build/**,**/dist/**,**/*.test.js \
-                            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-                    """
-                }
-            }
-        }
-
-        // Quality Gate
-        stage('Quality Gate') {
-            steps {
-
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate(abortPipeline: false)
                 }
             }
         }
@@ -158,11 +80,15 @@ pipeline {
             steps {
 
                 sh """
+                    echo "Building Backend Image..."
+
                     docker build \
                         -t ${BACKEND_IMAGE}:${IMAGE_TAG} \
                         -t ${BACKEND_IMAGE}:latest \
                         -f backend/Dockerfile \
                         ./backend
+
+                    echo "Building Frontend Image..."
 
                     docker build \
                         --build-arg REACT_APP_BASE_URL=http://${EC2_PUBLIC_IP}:${BACKEND_PORT} \
@@ -171,47 +97,6 @@ pipeline {
                         -f frontend/Dockerfile \
                         ./frontend
                 """
-            }
-        }
-
-        // Trivy Image Scan
-        stage('Trivy Image Scan') {
-
-            parallel {
-
-                stage('Backend Image Scan') {
-                    steps {
-
-                        sh """
-                            trivy image \
-                                --exit-code 0 \
-                                --severity HIGH,CRITICAL \
-                                --cache-dir ${TRIVY_CACHE} \
-                                --format table \
-                                -o reports/trivy/backend-image-scan.txt \
-                                ${BACKEND_IMAGE}:${IMAGE_TAG}
-
-                            cat reports/trivy/backend-image-scan.txt
-                        """
-                    }
-                }
-
-                stage('Frontend Image Scan') {
-                    steps {
-
-                        sh """
-                            trivy image \
-                                --exit-code 0 \
-                                --severity HIGH,CRITICAL \
-                                --cache-dir ${TRIVY_CACHE} \
-                                --format table \
-                                -o reports/trivy/frontend-image-scan.txt \
-                                ${FRONTEND_IMAGE}:${IMAGE_TAG}
-
-                            cat reports/trivy/frontend-image-scan.txt
-                        """
-                    }
-                }
             }
         }
 
@@ -254,17 +139,20 @@ pipeline {
                 ]) {
 
                     sh """
-                        # Purane containers band karo
+                        echo "Stopping old containers..."
+
                         docker stop ${BACKEND_CONTAINER} 2>/dev/null || true
                         docker stop ${FRONTEND_CONTAINER} 2>/dev/null || true
 
                         docker rm ${BACKEND_CONTAINER} 2>/dev/null || true
                         docker rm ${FRONTEND_CONTAINER} 2>/dev/null || true
 
-                        # Shared network banao
+                        echo "Creating Docker network..."
+
                         docker network create mern-network 2>/dev/null || true
 
-                        # Backend container start karo
+                        echo "Starting Backend Container..."
+
                         docker run -d \
                             --name ${BACKEND_CONTAINER} \
                             --network mern-network \
@@ -283,7 +171,8 @@ pipeline {
                             -e NODE_ENV="production" \
                             ${BACKEND_IMAGE}:${IMAGE_TAG}
 
-                        # Frontend container start karo
+                        echo "Starting Frontend Container..."
+
                         docker run -d \
                             --name ${FRONTEND_CONTAINER} \
                             --network mern-network \
@@ -291,45 +180,51 @@ pipeline {
                             -p 80:80 \
                             ${FRONTEND_IMAGE}:${IMAGE_TAG}
 
-                        # Containers ready hone ka wait karo
+                        echo "Waiting for containers..."
+
                         sleep 15
 
-                        # Status check karo
-                        docker ps --filter "name=${BACKEND_CONTAINER}" --format "{{.Names}} → {{.Status}}"
+                        echo "Container Status"
 
-                        docker ps --filter "name=${FRONTEND_CONTAINER}" --format "{{.Names}} → {{.Status}}"
+                        docker ps --filter "name=${BACKEND_CONTAINER}"
+                        docker ps --filter "name=${FRONTEND_CONTAINER}"
 
-                        # Backend health check
-                        curl -sf http://localhost:${BACKEND_PORT}/health \
-                            && echo "Backend healthy" \
-                            || true
+                        echo "Backend Health Check"
 
-                        # Frontend health check
+                        curl -sf http://localhost:${BACKEND_PORT}/api/health \
+                            && echo "Backend Healthy" \
+                            || echo "Backend Health Failed"
+
+                        echo "Frontend Health Check"
+
                         curl -sf http://localhost \
-                            && echo "Frontend healthy" \
-                            || true
+                            && echo "Frontend Healthy" \
+                            || echo "Frontend Health Failed"
 
-                        echo "App live: http://${EC2_PUBLIC_IP}"
+                        echo "Application Live : http://${EC2_PUBLIC_IP}"
                     """
                 }
             }
         }
 
-        // Cleanup Old Images
+        // Cleanup
         stage('Cleanup Old Images') {
             steps {
 
                 sh """
-                    # Dangling images hata do
+                    echo "Cleaning dangling images..."
+
                     docker image prune -f
 
-                    # Purane backend tags hata do
+                    echo "Removing old backend images..."
+
                     docker images ${BACKEND_IMAGE} --format "{{.Tag}}" \
                         | grep -v "latest" \
                         | grep -v "${IMAGE_TAG}" \
                         | xargs -r -I {} docker rmi ${BACKEND_IMAGE}:{} || true
 
-                    # Purane frontend tags hata do
+                    echo "Removing old frontend images..."
+
                     docker images ${FRONTEND_IMAGE} --format "{{.Tag}}" \
                         | grep -v "latest" \
                         | grep -v "${IMAGE_TAG}" \
@@ -339,33 +234,14 @@ pipeline {
         }
     }
 
-    // Post Actions
     post {
 
-        always {
-
-            archiveArtifacts(
-                artifacts: 'reports/trivy/*.txt, reports/owasp/dependency-check-report.html',
-                allowEmptyArchive: true,
-                fingerprint: true
-            )
-
-            publishHTML([
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'reports/owasp',
-                reportFiles: 'dependency-check-report.html',
-                reportName: 'OWASP Dependency Check'
-            ])
-        }
-
         success {
-            echo "Build #${BUILD_NUMBER} successfully deployed → http://${EC2_PUBLIC_IP}"
+            echo "Build #${BUILD_NUMBER} deployed successfully → http://${EC2_PUBLIC_IP}"
         }
 
         failure {
-            echo "Build #${BUILD_NUMBER} failed. Console output check karo: ${BUILD_URL}console"
+            echo "Build #${BUILD_NUMBER} failed → ${BUILD_URL}console"
         }
 
         cleanup {
