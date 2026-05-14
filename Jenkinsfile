@@ -95,9 +95,11 @@ pipeline {
 
         stage('Push Images') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-creds',
-                    usernameVariable: 'USER',
-                    passwordVariable: 'PASS')]) {
+                withCredentials([
+                    usernamePassword(credentialsId: 'docker-hub-creds',
+                        usernameVariable: 'USER',
+                        passwordVariable: 'PASS')
+                ]) {
 
                     sh """
                         echo "$PASS" | docker login -u "$USER" --password-stdin
@@ -116,19 +118,35 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                sh """
-                    echo "Stopping old containers..."
-                    docker compose down || true
 
-                    echo "Deploying with Docker Compose..."
-                    docker compose up -d --build
+                withCredentials([
+                    string(credentialsId: 'MONGO_URI', variable: 'MONGO_URI'),
+                    string(credentialsId: 'SECRET_KEY', variable: 'SECRET_KEY'),
+                    string(credentialsId: 'EMAIL', variable: 'EMAIL'),
+                    string(credentialsId: 'EMAIL_PASSWORD', variable: 'EMAIL_PASSWORD')
+                ]) {
 
-                    sleep 15
+                    sh """
+                        echo "Creating env file..."
 
-                    docker ps
+                        cat > backend/.env <<EOF
+MONGO_URI=${MONGO_URI}
+SECRET_KEY=${SECRET_KEY}
+EMAIL=${EMAIL}
+EMAIL_PASSWORD=${EMAIL_PASSWORD}
+EOF
 
-                    echo "App running at: http://${EC2_PUBLIC_IP}"
-                """
+                        echo "Stopping old containers..."
+                        docker compose down || true
+
+                        echo "Starting new containers..."
+                        docker compose up -d --build
+
+                        sleep 15
+
+                        docker ps
+                    """
+                }
             }
         }
 
@@ -142,6 +160,7 @@ pipeline {
     }
 
     post {
+
         always {
             echo "Build finished"
         }
