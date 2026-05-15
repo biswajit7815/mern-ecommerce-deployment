@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 
 # Saari dependencies install karo (dev bhi, build ke liye zaroori)
-RUN npm ci --legacy-peer-deps
+RUN npm install  --legacy-peer-deps
 
 # Source code copy karo
 COPY . .
