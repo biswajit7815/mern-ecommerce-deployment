@@ -39,7 +39,7 @@ pipeline {
                 stage('Frontend Install') {
                     steps {
                         dir('frontend') {
-                            sh 'npm install --legacy-peer-deps'
+                            sh 'npm ci --legacy-peer-deps'
                         }
                     }
                 }
